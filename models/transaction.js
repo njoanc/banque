@@ -1,47 +1,62 @@
-const express=require('express');
-const mongoose=require('mongoose');
-const Joi=require('joi');
+// const express=require('express');
+const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const Joi = require('joi');
+const config = require('config');
 
 
-const transactionSchema= new mongoose.Schema({
+const transactionSchema = new mongoose.Schema({
 
-    accountName:{
-        type:String
+    type: {
+        type: String,
+        enum: ['Deposit', 'Withdrawal']
     },
-    accountNumber:{
-        type:Number
+    accountName: {
+        type: String
     },
-    transactionName:{
-        type:String,
-        enum:['withdraw','deposit'],
-        required:true
+    accountNumber: {
+        type: Number
     },
-    amount:{
-        type:Number,
-        required:true
+    transactionName: {
+        type: String,
+        enum: ['withdraw', 'deposit'],
+        required: true
     },
-    transactionDate:{
-        type:Date,
-        required:true
-
-    }
+    amount: {
+        type: Number,
+        required: true
+    },
+    token: { type: String },
+    datedIn: { type: Date, default: Date.now() }
 });
 
-const Transaction=mongoose.model('Transaction',transactionSchema);
+// generate token
+transactionSchema.methods.generateAuthToken = async () => {
 
-function validateTransaction(p){
+    const token = await jwt.sign({ _id: this._id }, config.get('jwtKey'));
+    this.token = token;
 
-    const schema={
-        accountName:Joi.string().required(),
-        accountNumber:Joi.string().required(),
-        transactionName:Joi.string().valid('withdraw','deposit').required(),
-        amount:Joi.number().required(),
-        transactionDate:Joi.date().required(),
-       
-    }
-
-    return Joi.validate(p,schema)
+    return token;
 }
 
-exports.Transaction=Transaction
-exports.validate=validateTransaction;
+// Joi validation
+exports.validTransaction = function (req, res, next) {
+    const details = req.body;
+
+    const schema = {
+        type: Joi.string().valid('Deposit', 'Withdrawal').required(),
+        accountName: Joi.string().required(),
+        accountNumber: Joi.number().required(),
+        amount: Joi.number().required()
+    }
+
+    const options = config.get('joiOptions');
+
+    const { error } = Joi.validate(details, schema, options);
+    if (error) return res.status(422).json({ error: error.details[0].message });
+
+    next();
+}
+
+//model
+exports.Transaction = mongoose.model('Transaction', transactionSchema);

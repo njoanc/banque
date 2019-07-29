@@ -1,65 +1,89 @@
-const{User}=require('../models/user');
-const Joi=require('joi');
-const randomize=require('randomatic');
-const mongoose=require('mongoose');
-const express=require('express');
+const { User } = require('./User')
+const Joi = require('joi');
+const randomize = require('randomatic');
+const mongoose = require('mongoose');
+// const express = require('express');
+const config = require('config');
+const jwt = require('jsonwebtoken');
 
 const accountSchema = new mongoose.Schema({
+    NID: {
+        type: Number,
+        unique: true,
+        required: true
+    },
+    accountName: {
+        type: String,
 
-accountName:{
-type:String,
+    },
+    accountNumber: {
+        type: Number,
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['active', 'dormant', 'draft'],
+        default: 'draft',
+        required: true
+    },
+    type: {
+        type: String,
+        enum: ['Savings', 'Current'],
+        default: 'Current'
+    },
+    balance: {
+        type: Number,
+        default: 0
+    },
+    token: { type: String }
+},
+    { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }, autoCreate: false }
+);
 
-},  
-NID:{
-    type:Number,
-    required:true
-},
+// set the accountName to match the users first and last name
+accountSchema.methods.setAccountName = async (_id, accName) => {
 
-status:{
-    type:String,
-    enum:['active','dormant','draft'],
-    default:'draft',
-    required:true
-},
-amount:{
-    type:Number,
-    default:0,
-    required:true
-},
-creationDay:{
-    type:Date,
-    default:Date.now,
-    required:true
-},
-accountNumber:{
-    type:String
+    let user = await User.findOne({ _id });
+    this.accountName = accName;
+    this.accountName = await user.name.toUpperCase();
+    return this.accountName;
 }
 
-});
+// set the account number 
+accountSchema.methods.setAccountNumber = () => {
+    const randomaze = randomize('0', 15);
+    this.accountNumber = randomaze;
 
-accountSchema.methods.generateAccount=function(){
-   const randomaze= randomize('0',10);
-   this.accountNumber = randomaze;
-
-   return this.accountNumber;
+    return this.accountNumber;
 }
-const Account=mongoose.model('Account',accountSchema);
-function validateAccount(account)
-{
-    const schema={
-        NID:Joi.number().required(),
-        amount:Joi.number(),
-        creationDay:Joi.date(),
-        accountName:Joi.string(),
-        status:Joi.string()
-    
 
+// generate token
+accountSchema.methods.generateAuthToken = async () => {
+
+    const token = await jwt.sign({ _id: this._id }, config.get('jwtKey'), { expiresIn: '600d' });
+    this.token = token;
+
+    return token;
+}
+
+
+exports.validAccount = async (req, es, next) => {
+    const details = req.body;
+
+    const schema = {
+        ID: Joi.number().required(),
+        type: Joi.string().valid('Savings', 'Current')
     }
 
-    return Joi.validate(account,schema)
+    const options = config.get('joiOptions');
+
+    const { rror } = Joi.validate(details, schema, options);
+    if error) return res.status(422).json({error: error.details[0].message });
+
+    next();
 }
 
-exports.Account=Account;
-exports.validate=validateAccount;
+//model
+exports.Account = mongoose.model('Account', accountSchema)
 
 
